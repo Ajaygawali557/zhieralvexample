@@ -1,0 +1,92 @@
+REPORT z_hier_alv_example.
+
+*-----------------------------------------------------------------------
+* Type Declarations
+*-----------------------------------------------------------------------
+TYPES: BEGIN OF ty_vbrk,
+         vbeln TYPE vbrk-vbeln,   " Billing Document
+         kunrg TYPE vbrk-kunrg,   " Payer
+         fkdat TYPE vbrk-fkdat,   " Billing Date
+         netwr TYPE vbrk-netwr,   " Net Value
+       END OF ty_vbrk.
+
+TYPES: BEGIN OF ty_vbrp,
+         vbeln TYPE vbrp-vbeln,   " Billing Document
+         posnr TYPE vbrp-posnr,   " Item Number
+         arktx TYPE vbrp-arktx,   " Material Description
+         fkimg TYPE vbrp-fkimg,   " Billing Quantity
+         vrkme TYPE vbrp-vrkme,   " Sales Unit
+         netwr TYPE vbrp-netwr,   " Net Value Item
+         matnr TYPE vbrp-matnr,   " Material
+       END OF ty_vbrp.
+
+*-----------------------------------------------------------------------
+* Data Declarations
+*-----------------------------------------------------------------------
+DATA: it_vbrk TYPE STANDARD TABLE OF ty_vbrk,
+      it_vbrp TYPE STANDARD TABLE OF ty_vbrp,
+      lo_alv  TYPE REF TO cl_salv_hierseq_table,
+      v_vbeln TYPE vbrk-vbeln.
+
+SELECT-OPTIONS: s_vbeln FOR v_vbeln.
+
+*-----------------------------------------------------------------------
+* START-OF-SELECTION
+*-----------------------------------------------------------------------
+START-OF-SELECTION.
+  PERFORM get_data.
+  PERFORM show_output.
+
+*-----------------------------------------------------------------------
+* Get Data
+*-----------------------------------------------------------------------
+FORM get_data .
+  SELECT vbeln kunrg fkdat netwr
+    FROM vbrk
+    INTO TABLE it_vbrk
+    WHERE vbeln IN s_vbeln.
+
+  SELECT vbeln posnr arktx fkimg vrkme netwr matnr
+    FROM vbrp
+    INTO TABLE it_vbrp
+    WHERE vbeln IN s_vbeln.
+ENDFORM.
+
+*-----------------------------------------------------------------------
+* Show Output (Hierarchical ALV)
+*-----------------------------------------------------------------------
+FORM show_output .
+  DATA: lt_key        TYPE salv_t_hierseq_binding,
+        lw_key        LIKE LINE OF lt_key,
+        lex_data_err  TYPE REF TO cx_salv_data_error,
+        lex_not_found TYPE REF TO cx_salv_not_found,
+        lo_functions  TYPE REF TO cl_salv_functions_list.
+
+  " Binding key for Master-Detail
+  lw_key-master = 'VBELN'.   " Parent field (Header)
+  lw_key-slave  = 'VBELN'.   " Child field (Item)
+  APPEND lw_key TO lt_key.
+
+  TRY.
+      CALL METHOD cl_salv_hierseq_table=>factory
+        EXPORTING
+          t_binding_level1_level2 = lt_key
+        IMPORTING
+          r_hierseq               = lo_alv
+        CHANGING
+          t_table_level1          = it_vbrk
+          t_table_level2          = it_vbrp.
+
+      " Enable functions
+      lo_functions = lo_alv->get_functions( ).
+      lo_functions->set_all( abap_true ).
+
+      " Display ALV
+      lo_alv->display( ).
+
+    CATCH cx_salv_data_error INTO lex_data_err.
+      MESSAGE lex_data_err->get_text( ) TYPE 'E'.
+    CATCH cx_salv_not_found INTO lex_not_found.
+      MESSAGE lex_not_found->get_text( ) TYPE 'E'.
+  ENDTRY.
+ENDFORM. 
